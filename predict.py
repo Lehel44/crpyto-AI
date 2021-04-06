@@ -1,8 +1,17 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[1]:
-
+# ---
+# jupyter:
+#   jupytext:
+#     formats: ipynb,py
+#     text_representation:
+#       extension: .py
+#       format_name: light
+#       format_version: '1.5'
+#       jupytext_version: 1.11.1
+#   kernelspec:
+#     display_name: crypto-v3.8
+#     language: python
+#     name: crypto-v3.8
+# ---
 
 import requests
 import urllib.request
@@ -13,24 +22,15 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 from keras.models import load_model
 from pickle import load
-
-
-# In[2]:
-
+import matplotlib.pyplot as plt
+# %matplotlib inline
 
 url = 'https://min-api.cryptocompare.com/data/v2/histoday?fsym=BTC&tsym=USD&limit=100'
 response = requests.get(url)
 
-
-# In[3]:
-
-
 soup = BeautifulSoup(response.text, "html.parser")
 
-
-# In[4]:
-
-
+# +
 data = json.loads(str(soup))
 
 df = pd.DataFrame(data['Data']['Data'])
@@ -39,30 +39,19 @@ df.index = pd.to_datetime(df.index, unit='s')
 df = df.drop(['conversionType', 'conversionSymbol'], axis=1 )
 target_col = 'close'
 
-
-# In[5]:
-
+df.head()
+# -
 
 model = load_model('best_model.h5')
 scaler = load(open('scaler.pkl', 'rb'))
 
-
-# In[6]:
-
-
 window_len = model.input_shape[1]
-
-
-# In[7]:
-
 
 scaled = scaler.transform(df)
 scaled_df = pd.DataFrame(scaled, columns=df.columns,index=df.index)
 
 
-# In[8]:
-
-
+# +
 def extract_window_data(df, window_len=5):
     window_data = []
     for idx in range(len(df) - window_len):
@@ -79,15 +68,12 @@ def prepare_data(df, target_col, window_len=10):
     return x, y
 
 
-# In[9]:
 
+# -
 
 x_test, y_test = prepare_data(scaled_df, target_col, window_len)
 
-
-# In[10]:
-
-
+# +
 preds = model.predict(x_test).squeeze()
 
 preds_arr = np.zeros([preds.shape[0], 6])
@@ -97,18 +83,22 @@ preds = scaler.inverse_transform(preds_arr)
 
 preds_df = pd.DataFrame(preds, columns=df.columns)
 
+preds_df.head()
 
-# In[11]:
-
-
+# +
 predicted_closing_prices = preds_df[target_col].values
 actual_closing_prices = df[target_col][window_len:]
 predicted_closing_prices = pd.Series(index=actual_closing_prices.index, data=predicted_closing_prices)
 
+fig, ax = plt.subplots(1, figsize=(13, 7))
+ax.plot(actual_closing_prices, label='actual')
+ax.plot(predicted_closing_prices, label='predicted')
+ax.set_ylabel('price [USD]', fontsize=14)
+ax.set_title('Evaluation', fontsize=16)
+ax.legend(loc='best', fontsize=16)
+plt.show()
 
-# In[12]:
-
-
+# +
 w = scaled_df[len(df)-window_len:len(df)]
 wn = np.array(w)
 wn = wn[np.newaxis, :, :]
@@ -119,47 +109,24 @@ t_arr[5] = t
 t_arr = t_arr[np.newaxis, :]
 tomorrow = scaler.inverse_transform(t_arr)
 tomorrow = tomorrow[0,5]
-
-
-# In[13]:
-
+# -
 
 save_data = {'time': df.index[window_len:], 'actual': df[target_col][window_len:], 'preds': predicted_closing_prices}
 save_df = pd.DataFrame(data=save_data)
 save_df = save_df.set_index('time')
 
-
-# In[14]:
-
-
-# In[58]:
-
+save_df
 
 dt = save_df.index[-1] - save_df.index[-2]
 tomorrow_df = pd.DataFrame([[save_df.index[-1] + dt, tomorrow]], columns=['time', 'preds'])
 tomorrow_df = tomorrow_df.set_index('time')
 
-
-# In[59]:
-
-
-# In[60]:
-
+tomorrow_df
 
 save_df = save_df.append(tomorrow_df)
 
-
-# In[61]:
-
-
-# In[62]:
-
+save_df
 
 save_df.to_json(r'results.json')
-
-
-# In[ ]:
-
-
 
 
