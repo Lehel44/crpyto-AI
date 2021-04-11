@@ -35,6 +35,7 @@ from pickle import dump
 df = pd.read_json('content/btc_ohlc_daily.json')
 df.rename_axis('time', axis=0)
 target_col = 'close'
+target_size = 3
 
 df.head()
 
@@ -87,16 +88,26 @@ line_plot(train_df[target_col], validation_df[target_col], test_df[target_col], 
 
 
 # + id="u3EtleUrgD3l"
-def extract_window_data(df, window_len=5):
+def extract_window_data(df, window_len=5, output_size=1):
     window_data = []
-    for idx in range(len(df) - window_len):
+    for idx in range(len(df) - window_len - output_size + 1):
         tmp = df[idx: (idx + window_len)].copy()
         window_data.append(tmp.values)
     return np.array(window_data)
 
-def prepare_data(df, target_col, window_len=10):
-    x = extract_window_data(df, window_len)
-    y = df[target_col][window_len:].values
+def extract_target_data(df_target, window_len, output_size):
+    target_data = []
+    for idx in range(len(df_target) - window_len - output_size + 1):
+        tmp = df_target[idx + window_len : idx + window_len + output_size]
+        target_data.append(tmp.values)
+    return np.array(target_data)
+
+def prepare_data(df, target_col, window_len=10, output_size=1):
+    x = extract_window_data(df, window_len, output_size)
+    if output_size == 1:
+        y = df[target_col][window_len:].values
+    else:
+        y = extract_target_data(df[target_col], window_len, output_size)
     return x, y
 
 def build_lstm_model(input_data, output_size, neurons=100, activ_func='linear', dropout=0.2, loss='mse', optimizer='adam'):
@@ -131,12 +142,15 @@ mc = tf.keras.callbacks.ModelCheckpoint('best_model.h5', monitor='val_loss', mod
 # + id="aI9RtVclghX0"
 #X_train, X_val, X_test, y_train, y_val, y_test = prepare_data(df_scaled, target_col, window_len=window_len)
 
-X_train, y_train = prepare_data(train_scaled_df, target_col, window_len=window_len)
-X_val, y_val = prepare_data(validation_scaled_df, target_col, window_len=window_len)
-X_test, y_test = prepare_data(test_scaled_df, target_col, window_len=window_len)
+X_train, y_train = prepare_data(train_scaled_df, target_col, window_len=window_len, output_size=target_size)
+X_val, y_val = prepare_data(validation_scaled_df, target_col, window_len=window_len, output_size=target_size)
+X_test, y_test = prepare_data(test_scaled_df, target_col, window_len=window_len, output_size=target_size)
+# -
+
+y_train.shape
 
 # + colab={"base_uri": "https://localhost:8080/"} id="t5ghdGoTDiFc" outputId="8fb5f80e-0585-4e6b-e662-f829ebc5d304"
-model = build_lstm_model(X_train, output_size=1, neurons=lstm_neurons, dropout=dropout, loss=loss, optimizer=optimizer)
+model = build_lstm_model(X_train, output_size=target_size, neurons=lstm_neurons, dropout=dropout, loss=loss, optimizer=optimizer)
 history = model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=epochs, batch_size=batch_size, verbose=1, shuffle=False, callbacks=[es, mc])
 
 # + colab={"base_uri": "https://localhost:8080/"} id="nINgEWMMM4j3" outputId="b557d9fa-410b-422c-c815-fe2bf21a894e"
@@ -154,27 +168,38 @@ X_test.shape
 # + colab={"base_uri": "https://localhost:8080/", "height": 204} id="8yi9lvtOmRRM" outputId="6c508ea8-c3d6-4cfc-e5f7-e167297bdcdc"
 preds = model.predict(X_test).squeeze()
 
-arr = np.zeros([preds.shape[0], 6])
-arr[:, 5] = preds
+res_array = []
+for i in range(target_size):
+    arr = np.zeros([preds.shape[0], 6])
+    arr[:, 5] = preds[:,i]
+    res = scaler.inverse_transform(arr)
+    res_array.append(res[:,5])
 
-res = scaler.inverse_transform(arr)
+res_array = np.array(res_array)
+#df_res = pd.DataFrame(res, columns=df.columns) todo delete if refractor complete
+#df_res.head()
+# -
 
-df_res = pd.DataFrame(res, columns=df.columns)
+np.shape(res_array)
 
-df_res.head()
+i = 0
+test_df[target_col][0:len(test_df)]
+
+fff = np.array(res_array)
 
 # + colab={"base_uri": "https://localhost:8080/", "height": 446} id="vMMtJeVAhDRT" outputId="ba0656ef-35fa-43ca-a2cf-9ef0f99aa2ff"
-predicted_closing_prices = df_res[target_col].values
-actual_closing_prices = test_df[target_col][window_len:]
-predicted_closing_prices = pd.Series(index=actual_closing_prices.index, data=predicted_closing_prices)
+for i in range(target_size):
+    predicted_closing_prices = res_array[i,:]
+    actual_closing_prices = test_df[target_col][window_len+i:len(test_df)-target_size+1+i]
+    predicted_closing_prices = pd.Series(index=actual_closing_prices.index, data=predicted_closing_prices)
 
-fig, ax = plt.subplots(1, figsize=(13, 7))
-ax.plot(actual_closing_prices, label='actual')
-ax.plot(predicted_closing_prices, label='predicted')
-ax.set_ylabel('price [USD]', fontsize=14)
-ax.set_title('Evaluation', fontsize=16)
-ax.legend(loc='best', fontsize=16)
-plt.show()
+    fig, ax = plt.subplots(1, figsize=(13, 7))
+    ax.plot(actual_closing_prices, label='actual')
+    ax.plot(predicted_closing_prices, label='predicted')
+    ax.set_ylabel('price [USD]', fontsize=14)
+    ax.set_title('Evaluation', fontsize=16)
+    ax.legend(loc='best', fontsize=16)
+    plt.show()
 
 # + id="EfOvme7sM4j4"
 res_data = {'time': test_df.index[window_len:], 'actual': test_df[target_col][window_len:], 'preds' :predicted_closing_prices}
