@@ -37,6 +37,10 @@ df.rename_axis('time', axis=0)
 target_col = 'close'
 target_size = 3
 
+for i, val in enumerate(df.columns):
+    if val == target_col:
+        target_idx = i
+
 df.head()
 
 
@@ -165,19 +169,26 @@ print('Train: %.3f, Test: %.3f' % (train_acc, test_acc))
 # + colab={"base_uri": "https://localhost:8080/"} id="7BqGSYWIM4j3" outputId="75730a80-0f56-4dbc-e310-81239d29062d"
 X_test.shape
 
+
+# -
+
+def inverse_scaler(scaler, din, target_idx):
+    res_array = []
+    for i in range(din.shape[1]):
+        arr = np.zeros([din.shape[0], scaler.n_features_in_])
+        arr[:, target_idx] = din[:,i]
+        res = scaler.inverse_transform(arr)
+        res_array.append(res[:,target_idx])
+    return np.array(res_array)
+
+
+
 # + colab={"base_uri": "https://localhost:8080/", "height": 204} id="8yi9lvtOmRRM" outputId="6c508ea8-c3d6-4cfc-e5f7-e167297bdcdc"
 preds = model.predict(X_test).squeeze()
 
-res_array = []
-for i in range(target_size):
-    arr = np.zeros([preds.shape[0], 6])
-    arr[:, 5] = preds[:,i]
-    res = scaler.inverse_transform(arr)
-    res_array.append(res[:,5])
+res_array = inverse_scaler(scaler, preds, target_idx)
 
 res_array = np.array(res_array)
-#df_res = pd.DataFrame(res, columns=df.columns) todo delete if refractor complete
-#df_res.head()
 # -
 
 np.shape(res_array)
@@ -200,17 +211,6 @@ for i in range(target_size):
     ax.set_title('Evaluation', fontsize=16)
     ax.legend(loc='best', fontsize=16)
     plt.show()
-
-# + id="EfOvme7sM4j4"
-res_data = {'time': test_df.index[window_len:], 'actual': test_df[target_col][window_len:], 'preds' :predicted_closing_prices}
-res_df = pd.DataFrame(data=res_data)
-res_df = res_df.set_index('time')
-
-# + colab={"base_uri": "https://localhost:8080/", "height": 235} id="-1vSQBq6M4j5" outputId="e721c3e5-d7dc-41f8-b167-b5ad12f30e23"
-res_df.head()
-
-# + id="luJig1jtM4j5"
-res_df.to_json(r'results.json')
 
 # + colab={"base_uri": "https://localhost:8080/", "height": 533} id="feZTCAj-M4j6" outputId="4c987ae0-0e02-45f0-fed7-827cee42554e"
 tf.keras.utils.plot_model(model, to_file='model.png', show_shapes=True)
