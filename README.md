@@ -4,7 +4,7 @@ todo
 
 ## Develop
 ### Version control
-####Jupytext:
+#### Jupytext:
 It makes ipynb-py pairs and if one's content changes jupytext automatically updates the otherc. Only version contrsol the py file.
 
 conda install jupytext -c conda-forge
